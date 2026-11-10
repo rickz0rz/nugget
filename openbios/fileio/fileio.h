@@ -31,6 +31,8 @@ SOFTWARE.
 
 int psxopen(const char *fname, int mode);
 int psxlseek(int fd, int offset, int whence);
+int psxgeterrno();
+int psxgeterror(int fd);
 int psxread(int fd, void *buffer, int size);
 int psxwrite(int fd, void *buffer, int size);
 int psxclose(int fd);

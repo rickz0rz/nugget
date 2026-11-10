@@ -105,6 +105,17 @@ int psxopen(const char* path, int mode) {
     return file->fd;
 }
 
+int psxgeterrno() { return psxerrno; }
+
+int psxgeterror(int fd) {
+    struct File* file = getFileFromHandle(fd);
+    if (!file || !file->flags) {
+        psxerrno = PSXEBADF;
+        return -1;
+    }
+    return file->errno;
+}
+
 int psxlseek(int fd, int offset, int whence) {
     struct File* file = getFileFromHandle(fd);
     if (!file || !file->flags) {

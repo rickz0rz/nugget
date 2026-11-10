@@ -234,7 +234,7 @@ void *B0table[0x60] = {
     removeDevice, printInstalledDevices, initCard, startCard, // 48
     stopCard, cardInfoInternal, mcWriteSector, mcReadSector, // 4c
     mcAllowNewCard, Krom2RawAdd, unimplementedThunk, Krom2Offset, // 50
-    unimplementedThunk, unimplementedThunk, getC0table, getB0table, // 54
+    psxgeterrno, psxgeterror, getC0table, getB0table, // 54
     mcGetLastDevice, unimplementedThunk, unimplementedThunk, setSIO0AutoAck, // 58
     getCardStatus, waitCardStatus, unimplementedThunk, unimplementedThunk, // 5c
 };
