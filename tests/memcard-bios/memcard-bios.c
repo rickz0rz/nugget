@@ -26,7 +26,8 @@ SOFTWARE.
 
 // The BIOS memory card calls, against the card in MEMCARD_PORT (0 = slot 1,
 // 1 = slot 2): the low level sector calls _card_read / _card_write and the
-// "bu" device behind open / read / write / firstfile / erase / format. In the
+// "bu" device behind open / lseek / read / write / firstfile / erase / format,
+// and the error codes of _get_errno / _get_error. In the
 // emulator that is OpenBIOS; on a console it is the retail kernel, so the two
 // are held to the same expectations. THIS TEST ERASES THE CARD, after the same
 // check psyqo's memcard test makes that it holds nothing but this suite's own
@@ -55,18 +56,27 @@ NUGGET_BIOS_THUNK(buFormat, 0xb0, 0x41)
 NUGGET_BIOS_THUNK(firstFile, 0xb0, 0x42)
 NUGGET_BIOS_THUNK(nextFile, 0xb0, 0x43)
 NUGGET_BIOS_THUNK(erase, 0xb0, 0x45)
+NUGGET_BIOS_THUNK(lseek, 0xb0, 0x33)
+NUGGET_BIOS_THUNK(getErrno, 0xb0, 0x54)
+NUGGET_BIOS_THUNK(getError, 0xb0, 0x55)
 int __nugget_bios_initCard(int padEnable);
 int __nugget_bios_startCard(void);
 int __nugget_bios_buFormat(const char *dev);
 struct DirEntry *__nugget_bios_firstFile(const char *pattern, struct DirEntry *entry);
 struct DirEntry *__nugget_bios_nextFile(struct DirEntry *entry);
 int __nugget_bios_erase(const char *name);
+int __nugget_bios_lseek(int fd, int offset, int whence);
+int __nugget_bios_getErrno(void);
+int __nugget_bios_getError(int fd);
 #define initCard __nugget_bios_initCard
 #define startCard __nugget_bios_startCard
 #define buFormat __nugget_bios_buFormat
 #define firstFile __nugget_bios_firstFile
 #define nextFile __nugget_bios_nextFile
 #define erase __nugget_bios_erase
+#define lseek __nugget_bios_lseek
+#define getErrno __nugget_bios_getErrno
+#define getError __nugget_bios_getError
 
 // Low level completion is signalled on the hardware card event class.
 #define EVENT_HWCARD 0xf0000011
@@ -288,10 +298,31 @@ static void testDevice() {
     if (fd >= 0) syscall_close(fd);
     check(n == 2048 && same(s_data, s_readback, 2048), "read back the second file");
 
+    // A seek to a sector, the error of the file, then a read: Final Fantasy
+    // Tactics loads its save this way, with _get_error between the two calls.
+    __builtin_memset(s_readback, 0, 128);
+    fd = syscall_open(BU_PATH("BIMEMTEST-BIOS2"), PSXF_READ);
+    int offset = fd >= 0 ? lseek(fd, 1024, PSXSEEK_SET) : -1;
+    int error = fd >= 0 ? getError(fd) : -1;
+    n = fd >= 0 ? syscall_read(fd, s_readback, 128) : -1;
+    if (fd >= 0) syscall_close(fd);
+    ramsyscall_printf("lseek: %d, _get_error: %d\n", offset, error);
+    check(offset == 1024 && error == PSXENOERR, "_get_error after open and lseek is no error");
+    check(n == 128 && same(s_data + 1024, s_readback, 128), "read after lseek");
+
+    // A handle that is not open: here the one just closed.
+    error = fd >= 0 ? getError(fd) : 0;
+    int errnoValue = getErrno();
+    ramsyscall_printf("_get_error of a closed handle: %d, then _get_errno: %d\n", error, errnoValue);
+    check(error == -1 && errnoValue == PSXEBADF, "_get_error of a closed handle is -1, with EBADF");
+
     check(erase(BU_PATH("BIMEMTEST-BIOS")) == 1, "erase the first file");
     struct DirEntry *p = firstFile(BU_PATH("*"), &entry);
     check(p && streq(entry.name, "BIMEMTEST-BIOS2") && nextFile(&entry) == NULL, "only the second file is left");
     check(syscall_open(BU_PATH("BIMEMTEST-BIOS"), PSXF_READ) < 0, "open an erased file fails");
+    errnoValue = getErrno();
+    ramsyscall_printf("_get_errno after the failed open: %d\n", errnoValue);
+    check(errnoValue == PSXENOENT, "_get_errno after the failed open is ENOENT");
 
     // What the kernel left in the directory, read raw: block 1 deleted, blocks
     // 2-3 the second file's chain, in the Sony layout psyqo's filesystem reads.
